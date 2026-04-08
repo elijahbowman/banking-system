@@ -14,68 +14,7 @@ env:
   SKIP_DEPENDENCY_CHECK: 'true'
   OWASP_ZAP_SCAN_TARGET_HOSTNAME: 'localhost'
 
-jobs:
-  delete-old-stacks:
-    if: false
-    # if: github.event_name == 'push'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Delete old monitoring stack
-        run: |
-          aws cloudformation delete-stack \
-            --stack-name banking-portfolio-monitoring \
-            --region us-east-1
-          aws cloudformation wait stack-delete-complete \
-            --stack-name banking-portfolio-monitoring \
-            --region us-east-1
-
-      - name: Delete old EB infrastructure stack
-        run: |
-          # Empty bucket
-          if aws s3 ls s3://${{ env.S3_BUCKET }}/ >/dev/null 2>&1; then
-            aws s3 rm s3://${{ env.S3_BUCKET }} --recursive
-          fi
-          
-          # # Delete bucket
-          # aws s3 rb s3://banking-portfolio-artifacts --force || echo "Bucket already gone"
-
-          # Delete stack
-          aws cloudformation delete-stack \
-            --stack-name banking-portfolio-eb \
-            --region ${{ env.AWS_REGION }}
-          aws cloudformation wait stack-delete-complete \
-            --stack-name banking-portfolio-eb \
-            --region ${{ env.AWS_REGION }}
-
-      - name: Delete old card lambda stack
-        run: |
-          # 1. Check if stack exists before deleting to avoid unnecessary waits
-          if aws cloudformation describe-stacks --stack-name banking-portfolio-card-lambda --region us-east-1 > /dev/null 2>&1; then
-            echo "Stack exists. Initiating delete..."
-            aws cloudformation delete-stack --stack-name banking-portfolio-card-lambda --region us-east-1
-            
-            # 2. Wait for deletion
-            aws cloudformation wait stack-delete-complete --stack-name banking-portfolio-card-lambda --region us-east-1
-          else
-            echo "Stack does not exist. Skipping delete."
-          fi
-
-      - name: Delete old core infrastructure stack
-        run: |
-          aws cloudformation delete-stack \
-            --stack-name banking-portfolio-core \
-            --region ${{ env.AWS_REGION }}
-          aws cloudformation wait stack-delete-complete \
-            --stack-name banking-portfolio-core \
-            --region ${{ env.AWS_REGION }}
-
+jobs:  
   build-and-test-banking:
     # if: false
     runs-on: ubuntu-latest

@@ -1,0 +1,50 @@
+name: AWS Infrastructure Teardown (Cost Control)
+
+on:
+  workflow_dispatch: # Allows manual triggering from the GitHub Actions UI tab
+
+env:
+  AWS_REGION: 'us-east-1'
+  S3_BUCKET: 'banking-portfolio-artifacts'
+
+jobs:
+  purge-and-destroy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Purge system-generated Beanstalk and Artifact buckets
+        run: |
+          echo "Emptying user deployment artifact bucket..."
+          if aws s3 ls s3://${{ env.S3_BUCKET }} >/dev/null 2>&1; then
+            aws s3 rm s3://${{ env.S3_BUCKET }} --recursive
+          fi
+
+          echo "Locating and emptying auto-generated Elastic Beanstalk log buckets..."
+          EB_BUCKETS=$(aws s3 ls | grep "elasticbeanstalk-${{ env.AWS_REGION }}" | awk '{print $3}')
+          for bucket in $EB_BUCKETS; do
+            echo "Emptying bucket: s3://$bucket"
+            aws s3 rm s3://$bucket --recursive
+          done
+
+      - name: Sequential CloudFormation Stack Deletion
+        run: |
+          # Delete Monitoring First to release logging elastic attachments
+          aws cloudformation delete-stack --stack-name banking-portfolio-monitoring
+          aws cloudformation wait stack-delete-complete --stack-name banking-portfolio-monitoring
+
+          # Delete Application Compute layers
+          aws cloudformation delete-stack --stack-name banking-portfolio-eb
+          aws cloudformation delete-stack --stack-name banking-portfolio-card-lambda
+          aws cloudformation wait stack-delete-complete --stack-name banking-portfolio-eb
+          aws cloudformation wait stack-delete-complete --stack-name banking-portfolio-card-lambda
+
+          # Delete Network Core last
+          aws cloudformation delete-stack --stack-name banking-portfolio-core
+          aws cloudformation wait stack-delete-complete --stack-name banking-portfolio-core
+          echo "AWS Environment completely cleared. Cost leakage risk zeroed."
